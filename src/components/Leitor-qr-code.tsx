@@ -71,6 +71,27 @@ const QRCodeReader = () => {
     }
   }, []);
 
+  const checkCameraAvailability = async (facingMode: string): Promise<boolean> => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      
+      // Se houver apenas uma câmera, ela está disponível
+      if (videoDevices.length === 1) return true;
+      
+      // Se houver mais de uma câmera, tenta acessar a específica
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: facingMode } }
+      });
+      
+      // Libera o stream após o teste
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const startScanning = async () => {
     if (!scannerRef.current) {
       setErrorMessage('Aguarde a inicialização do scanner...');
@@ -78,6 +99,17 @@ const QRCodeReader = () => {
     }
 
     try {
+      // Verifica disponibilidade da câmera
+      const isCameraAvailable = await checkCameraAvailability(
+        isFrontCamera ? 'user' : 'environment'
+      );
+
+      if (!isCameraAvailable) {
+        throw new Error(
+          `A câmera ${isFrontCamera ? 'frontal' : 'traseira'} não está disponível neste dispositivo.`
+        );
+      }
+
       const config = {
         ...qrConfig,
         videoConstraints: {
@@ -94,32 +126,10 @@ const QRCodeReader = () => {
       );
       setIsScanning(true);
       setErrorMessage(null);
-    } catch (err) {
-      console.error('Erro ao iniciar scanner:', err);
-      // Se falhar com 'exact: environment', tenta sem exact
-      if (!isFrontCamera) {
-        try {
-          const fallbackConfig = {
-            ...qrConfig,
-            videoConstraints: {
-              ...qrConfig.videoConstraints,
-              facingMode: 'environment'
-            }
-          };
-          await scannerRef.current?.start(
-            { facingMode: 'environment' },
-            fallbackConfig,
-            handleScanSuccess,
-            () => {}
-          );
-          setIsScanning(true);
-          setErrorMessage(null);
-          return;
-        } catch (fallbackErr) {
-          console.error('Erro ao tentar fallback:', fallbackErr);
-        }
-      }
-      setErrorMessage('Erro ao acessar a câmera. Verifique as permissões.');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao acessar a câmera';
+      setErrorMessage(errorMessage);
+      setIsScanning(false);
     }
   };
 
@@ -132,22 +142,37 @@ const QRCodeReader = () => {
         await scannerRef.current.clear();
       }
       setIsScanning(false);
-    } catch (err) {
-      console.error('Erro ao parar scanner:', err);
+    } catch (error) {
+      console.error('Erro ao parar scanner:', error);
+      setErrorMessage('Erro ao parar o scanner. Atualize a página e tente novamente.');
     }
   };
 
   const handleCameraSwitch = async (checked: boolean) => {
+    // Só permite trocar a câmera se não estiver escaneando
+    if (isScanning) {
+      setErrorMessage('Pare o scanner antes de trocar de câmera');
+      return;
+    }
+
     try {
-      await stopScanning();
-      setIsFrontCamera(checked);
-      if (isScanning) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await startScanning();
+      // Verifica se a câmera desejada está disponível
+      const isCameraAvailable = await checkCameraAvailability(
+        checked ? 'user' : 'environment'
+      );
+
+      if (!isCameraAvailable) {
+        setErrorMessage(
+          `A câmera ${checked ? 'frontal' : 'traseira'} não está disponível neste dispositivo.`
+        );
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao trocar câmera:', err);
-      setErrorMessage('Erro ao trocar de câmera. Tente novamente.');
+
+      setIsFrontCamera(checked);
+      setErrorMessage(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao verificar câmera';
+      setErrorMessage(message);
     }
   };
 
@@ -160,8 +185,9 @@ const QRCodeReader = () => {
       const result = await scannerRef.current.scanFile(file, true);
       setResult(result);
       setErrorMessage(null);
-    } catch (err) {
-      setErrorMessage('Erro ao processar imagem. Tente novamente.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao processar imagem';
+      setErrorMessage(`Erro ao processar imagem: ${message}`);
     }
   };
 
@@ -178,9 +204,9 @@ const QRCodeReader = () => {
       } else {
         await startScanning();
       }
-    } catch (err) {
-      console.error('Erro ao alternar scanner:', err);
-      setErrorMessage('Erro ao alternar o scanner. Tente novamente.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao alternar scanner';
+      setErrorMessage(message);
     }
   };
 
@@ -228,7 +254,7 @@ const QRCodeReader = () => {
           <div className="absolute bottom-0 left-0 w-8 h-8 border-l-2 border-b-2 border-white rounded-bl-lg z-10" />
           <div className="absolute bottom-0 right-0 w-8 h-8 border-r-2 border-b-2 border-white rounded-br-lg z-10" />
 
-          {/* QR Scanner - Sempre presente mas oculto quando não estiver escaneando */}
+          {/* QR Scanner */}
           <div 
             id="qr-reader"
             className={`w-full h-full overflow-hidden rounded-lg bg-black ${
@@ -236,7 +262,7 @@ const QRCodeReader = () => {
             }`}
           />
 
-          {/* Botão de iniciar - Mostrado apenas quando não estiver escaneando */}
+          {/* Botão de iniciar */}
           {!isScanning && (
             <div className="absolute inset-0 flex items-center justify-center">
               <Button
