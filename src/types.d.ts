@@ -1,4 +1,3 @@
-// types.d.ts
 declare module 'react-qr-scanner' {
     import { Component } from 'react';
   
@@ -7,7 +6,7 @@ declare module 'react-qr-scanner' {
       style?: object;
       onError: (error: Error) => void;
       onScan: (data: { text: string } | null) => void;
-      facingMode?: 'user' | 'environment';
+      constraints?: MediaStreamConstraints;
       className?: string;
     }
   

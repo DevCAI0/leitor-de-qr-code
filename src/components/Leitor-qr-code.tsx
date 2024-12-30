@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState,} from 'react';
 import QrReader from 'react-qr-scanner';
 import { Camera, Play, Square } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -16,6 +16,7 @@ const QRCodeReader = () => {
   const [error, setError] = useState<string | null>(null);
   const [isFrontCamera, setIsFrontCamera] = useState<boolean>(false);
   const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [key, setKey] = useState<number>(0); // Chave para forçar recriação do componente
 
   const handleError = (err: Error) => {
     console.error(err);
@@ -33,6 +34,15 @@ const QRCodeReader = () => {
     if (!isScanning) {
       setError(null);
       setResult('');
+    }
+  };
+
+  const handleCameraSwitch = (checked: boolean) => {
+    setIsFrontCamera(checked);
+    setKey(prev => prev + 1); // Força recriação do componente QrReader
+    if (isScanning) {
+      setIsScanning(false);
+      setTimeout(() => setIsScanning(true), 100);
     }
   };
 
@@ -76,7 +86,7 @@ const QRCodeReader = () => {
               <Switch
                 id="camera-switch"
                 checked={isFrontCamera}
-                onCheckedChange={setIsFrontCamera}
+                onCheckedChange={handleCameraSwitch}
                 disabled={isScanning}
               />
               <Label htmlFor="camera-switch">
@@ -95,11 +105,16 @@ const QRCodeReader = () => {
             <div className="w-full rounded-lg overflow-hidden bg-gray-100">
               {isScanning && (
                 <QrReader
+                  key={key} // Força recriação do componente quando a câmera muda
                   delay={300}
                   style={previewStyle}
                   onError={handleError}
                   onScan={handleScan}
-                  facingMode={isFrontCamera ? 'user' : 'environment'}
+                  constraints={{
+                    video: {
+                      facingMode: isFrontCamera ? 'user' : { exact: 'environment' }
+                    }
+                  }}
                 />
               )}
             </div>
