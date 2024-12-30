@@ -78,9 +78,17 @@ const QRCodeReader = () => {
     }
 
     try {
+      const config = {
+        ...qrConfig,
+        videoConstraints: {
+          ...qrConfig.videoConstraints,
+          facingMode: isFrontCamera ? 'user' : { exact: 'environment' }
+        }
+      };
+
       await scannerRef.current.start(
         { facingMode: isFrontCamera ? 'user' : { exact: 'environment' } },
-        qrConfig,
+        config,
         handleScanSuccess,
         () => {} // Ignore errors durante o scanning
       );
@@ -88,6 +96,29 @@ const QRCodeReader = () => {
       setErrorMessage(null);
     } catch (err) {
       console.error('Erro ao iniciar scanner:', err);
+      // Se falhar com 'exact: environment', tenta sem exact
+      if (!isFrontCamera) {
+        try {
+          const fallbackConfig = {
+            ...qrConfig,
+            videoConstraints: {
+              ...qrConfig.videoConstraints,
+              facingMode: 'environment'
+            }
+          };
+          await scannerRef.current?.start(
+            { facingMode: 'environment' },
+            fallbackConfig,
+            handleScanSuccess,
+            () => {}
+          );
+          setIsScanning(true);
+          setErrorMessage(null);
+          return;
+        } catch (fallbackErr) {
+          console.error('Erro ao tentar fallback:', fallbackErr);
+        }
+      }
       setErrorMessage('Erro ao acessar a câmera. Verifique as permissões.');
     }
   };
@@ -110,9 +141,8 @@ const QRCodeReader = () => {
     try {
       await stopScanning();
       setIsFrontCamera(checked);
-      // Se estava escaneando, reinicia com a nova câmera
       if (isScanning) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await startScanning();
       }
     } catch (err) {
